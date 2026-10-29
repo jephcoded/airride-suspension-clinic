@@ -1,24 +1,27 @@
 # Airride Suspension Clinic — Website & Repair Management System
 
-Customer website + online booking + repair tracking + technician/advisor/admin dashboards for
-air suspension, hydraulic suspension and shock absorber repair.
+Customer website, online booking, live repair tracking and a staff portal for air suspension, hydraulic suspension,
+shock absorber and automatic transmission repair.
+
+Live site: https://airridesuspensionclinic.com.ng
 
 | Part | Tech |
 |---|---|
-| `client/` | React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query |
+| `client/` | React 19, TypeScript, Vite, Tailwind CSS v4, React Router, TanStack Query (installable as an app / PWA) |
 | `server/` | Node.js, Express 5, TypeScript, Prisma, PostgreSQL |
-| Payments | Paystack (mock mode in development when no key is set) |
-| Notifications | Email (SMTP), SMS (Termii), WhatsApp (Meta Cloud API) — logged/skipped when not configured |
+| Hosting | Vercel (website + API), Neon (PostgreSQL), Vercel Blob (photos and videos) |
+| Payments | Paid at the workshop (cash or bank transfer). Staff record each payment and the customer gets a receipt on their tracking page. |
+| Notifications | Email (SMTP), phone alerts (Web Push), one-tap WhatsApp and SMS messages from the workshop's own phone. Optional automatic SMS via Termii or an Android phone gateway. |
 
 ## Run it locally
 
-Requirements: Node.js 20+, Docker Desktop.
+Requirements: Node.js 22, Docker Desktop.
 
 ```bash
 docker compose up -d                 # PostgreSQL on localhost:5433
 cd server
 npm install
-cp .env.example .env                 # then set JWT_SECRET
+cp .env.example .env                 # then set JWT_SECRET (and SMTP_* if you want emails)
 npx prisma migrate dev               # create tables
 npm run db:seed:demo                 # sample staff + repairs (local only)
 npm run dev                          # API on http://localhost:4000
@@ -36,15 +39,19 @@ For a live site, create the first admin with `ADMIN_EMAIL=... ADMIN_PASSWORD=...
 
 ## Main features
 
-- **Book a Repair**: 5-step mobile-first form (customer, vehicle, suspension and symptoms, photos/videos, collection option).
-  Generates a Repair ID like `ARC-2026-00125` and notifies the customer and the workshop.
-- **Track My Repair**: Repair ID + phone/email (or the secret link sent by WhatsApp/SMS/email). Shows a progress bar, timeline,
-  technician report, before/during/after photos, the quotation (Approve & Pay / Ask a question / Decline), payments and receipts,
-  warranty and warranty claims.
-- **Staff portal**: dashboard with stats and workshop queues; job search by name, phone, Repair ID, vehicle, registration, VIN
-  or component; digital Job Card with status updates, diagnosis, evidence uploads, a quotation builder, manual payments, warranty,
-  messages sent and customer history.
-- **Admin**: staff accounts and roles, enquiries, warranty claims, audit log.
+- **Book a Repair**: 5-step mobile-first form (customer with WhatsApp number, vehicle, suspension or automatic transmission
+  problem and symptoms, photos/videos straight from the phone camera, collection option). Generates a Repair ID like
+  `ARC-2026-00125` and notifies the customer and the workshop.
+- **Live repair tracking**: Repair ID + phone/email, or the secret link sent to the customer. Progress ring and 8-step tracker,
+  live activity feed with workshop photos, pop-up updates while the page is open and phone alerts when it is closed, the
+  quotation (approve / ask a question / decline), payments and receipts, warranty and warranty claims.
+- **My Repairs**: customers sign in with a one-time code sent to their email or phone to see all their repairs.
+- **Staff portal**: dashboard and workshop queues; job search by name, phone, Repair ID, vehicle, registration, VIN or
+  component; digital Job Card with status updates, diagnosis, photo/video evidence, quotation builder, payment recording,
+  warranty and customer history. After each update, staff can send it to the customer on WhatsApp or by SMS in one tap.
+- **Admin**: staff accounts and roles, business settings (contact details, warranty by repair type, deposit %, alert emails),
+  Website Photos (change the slideshow and page photos without code), enquiries, warranty claims and a readable audit log.
+- **Search engines**: per-page titles and descriptions, business details for Google (structured data), sitemap and robots.txt.
 
 ### Roles
 
@@ -52,32 +59,35 @@ For a live site, create the first admin with `ADMIN_EMAIL=... ADMIN_PASSWORD=...
 |---|---|
 | Technician | Jobs assigned to them (or unassigned), status updates, diagnosis, evidence. Cannot send quotes, cancel or close jobs. |
 | Service Advisor | Everything on all jobs, plus quotes, payments, warranty, enquiries |
-| Admin | Everything, plus staff accounts and the audit log |
+| Admin | Everything, plus staff accounts, settings, website photos and the audit log |
 
-## Going live checklist
+## Configuration (server environment variables)
 
-1. **Branding**: put the logo at `client/public/logo.png` (and a white version at `logo-light.png`). The brand colours are the
-   `--color-brand-*` / `--color-navy-*` tokens in `client/src/index.css`.
-2. **Photos**: put workshop photos in `client/public/images/`: `hero.jpg`, `air-suspension.jpg`, `hydraulic-suspension.jpg`,
-   `shock-absorbers.jpg`, `workshop-1..3.jpg`, `cta.jpg`, `vehicles.jpg`, `about-1.jpg`, `about-2.jpg`. Until they are added,
-   branded placeholders are shown.
-3. **Business details**: phone, WhatsApp, email, address and hours in `client/src/lib/constants.ts` (`BUSINESS`) and in the
-   `WORKSHOP_*` values in `server/.env`.
-4. **Paystack**: set `PAYSTACK_SECRET_KEY`, then set the webhook URL in the Paystack dashboard to
-   `https://<your-domain>/api/payments/paystack/webhook`.
-5. **Email**: set the `SMTP_*` values (e.g. Zoho, Google Workspace, Mailgun).
-6. **SMS**: set `TERMII_API_KEY` and register the sender ID with Termii.
-7. **WhatsApp**: create a WhatsApp Business app on Meta and set `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`. Get a template named
-   `repair_update` approved with 4 body variables: `{{1}}` name, `{{2}}` Repair ID, `{{3}}` update, `{{4}}` tracking link.
-8. **Security**: generate a strong `JWT_SECRET`, set `NODE_ENV=production`, serve over HTTPS, change or disable the demo staff
-   accounts, and turn on automatic database backups with your host.
-9. **Uploads**: files are stored in `server/uploads/` and are only served to signed-in staff or to the customer holding the
-   tracking link. Back this folder up, or move it to object storage (S3 / Cloudflare R2) when you scale.
+See `server/.env.example` for the full list. The main ones:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | PostgreSQL connection (pooled for the app, direct for migrations) |
+| `JWT_SECRET` | Long random string for staff and customer sessions |
+| `CLIENT_URL`, `SERVER_URL`, `SITE_URL` | The public web address (used in links, emails and the sitemap) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Outgoing email (e.g. a Gmail app password) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Phone alerts (generate with `npx web-push generate-vapid-keys`) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage for photos/videos (local disk is used when not set) |
+| `TERMII_API_KEY`, `TERMII_SENDER_ID`, `TERMII_BASE_URL` | Optional automatic SMS through Termii |
+| `PHONE_SMS_USER`, `PHONE_SMS_PASS` | Optional automatic SMS through an Android phone (sms-gate.app); used instead of Termii when set |
+
+Never commit real values: `.env` files are ignored by git.
+
+## Deploying
+
+The repo deploys to Vercel as one project: `npm run vercel-build` builds the API and the website, `api/index.js` serves the
+API and `client/dist` is the website. Apply database changes with `npx prisma migrate deploy` (using the direct database URL)
+before deploying code that needs them.
 
 ## Useful commands
 
 ```bash
 cd server && npm run db:studio       # browse the database
-cd server && npx prisma migrate reset   # wipe and re-seed (development only!)
+cd server && npm run db:backup       # back up the database
 cd client && npm run build           # production build in client/dist
 ```
