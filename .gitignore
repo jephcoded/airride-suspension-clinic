@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+server/uploads/*
+!server/uploads/.gitkeep
+*.log
+
+backups/
+
+.vercel
+.env*
+
+# Safe template (no secrets)
+!.env.example
+!server/.env.example

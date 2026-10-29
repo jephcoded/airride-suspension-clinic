@@ -1,0 +1,18 @@
+-- AlterTable
+ALTER TABLE "RepairJob" ADD COLUMN     "partsRequired" TEXT;
+
+-- CreateTable
+CREATE TABLE "OtpCode" (
+    "id" TEXT NOT NULL,
+    "contact" TEXT NOT NULL,
+    "codeHash" TEXT NOT NULL,
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "usedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "OtpCode_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "OtpCode_contact_createdAt_idx" ON "OtpCode"("contact", "createdAt");

@@ -1,0 +1,22 @@
+{
+  "name": "Airride Suspension Clinic",
+  "short_name": "Airride",
+  "description": "Book suspension repairs and track them live from your phone.",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#071226",
+  "theme_color": "#0b1b33",
+  "categories": ["business", "auto"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Track My Repair", "short_name": "Track", "url": "/track", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Book a Repair", "short_name": "Book", "url": "/book", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "My Repairs", "short_name": "My repairs", "url": "/account", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

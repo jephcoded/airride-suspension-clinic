@@ -1,0 +1,16 @@
+# Never upload local secrets, data or build leftovers
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+server/uploads
+server/backups
+server/dist
+client/dist
+docs
+*.png
+*.jpeg
+!client/public/**
+.git

@@ -1,0 +1,458 @@
+// Airride Suspension Clinic — repair management platform
+// Money is stored in kobo (₦1 = 100 kobo) as integers to avoid rounding errors.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" for this computer, rhel-openssl-3.0.x for Vercel's servers
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection, used only for migrations
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  CUSTOMER
+  TECHNICIAN
+  ADVISOR
+  ADMIN
+}
+
+enum RepairStage {
+  REQUEST_SUBMITTED
+  AWAITING_COMPONENT
+  RECEIVED
+  INSPECTION
+  DIAGNOSIS
+  QUOTE_SENT
+  AWAITING_APPROVAL
+  PARTS_SOURCING
+  REPAIR_IN_PROGRESS
+  TESTING
+  QUALITY_CONTROL
+  READY_FOR_COLLECTION
+  DISPATCHED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum SuspensionType {
+  AIR
+  HYDRAULIC
+  ELECTRONIC
+  UNKNOWN
+}
+
+enum ComponentType {
+  SHOCK_ABSORBER
+  AIR_STRUT
+  HYDRAULIC_STRUT
+  AIR_SPRING
+  HYDRAULIC_CYLINDER
+  VALVE_BLOCK
+  COMPRESSOR
+  PUMP
+  AUTOMATIC_TRANSMISSION
+  OTHER
+}
+
+enum VehicleType {
+  CAR
+  SUV
+  TRUCK
+  BUS
+  OTHER
+}
+
+enum ContactMethod {
+  PHONE
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum DeliveryOption {
+  DROP_OFF
+  PICKUP
+  SHIP
+}
+
+enum MediaPhase {
+  CUSTOMER
+  BEFORE
+  DURING
+  AFTER
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  DECLINED
+  CLARIFICATION_REQUESTED
+  SUPERSEDED
+}
+
+enum QuoteItemKind {
+  PART
+  LABOUR
+  TESTING
+  OTHER
+}
+
+enum PaymentStatus {
+  AWAITING
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+enum TxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum ClaimStatus {
+  OPEN
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  RESOLVED
+}
+
+enum EnquiryType {
+  QUOTE
+  CONTACT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer      Customer?
+  assignedJobs  RepairJob[]     @relation("AssignedTechnician")
+  statusUpdates StatusHistory[]
+  uploads       Media[]
+  auditLogs     AuditLog[]
+}
+
+model Customer {
+  id               String        @id @default(cuid())
+  fullName         String
+  phone            String
+  whatsapp         String?
+  email            String?
+  location         String?
+  preferredContact ContactMethod @default(WHATSAPP)
+  userId           String?       @unique
+  user             User?         @relation(fields: [userId], references: [id])
+  createdAt        DateTime      @default(now())
+
+  vehicles Vehicle[]
+  jobs     RepairJob[]
+
+  @@index([phone])
+  @@index([email])
+}
+
+model Vehicle {
+  id           String      @id @default(cuid())
+  customerId   String
+  customer     Customer    @relation(fields: [customerId], references: [id])
+  make         String
+  model        String
+  year         Int?
+  vin          String?
+  registration String?
+  mileage      Int?
+  type         VehicleType @default(CAR)
+  createdAt    DateTime    @default(now())
+
+  jobs RepairJob[]
+
+  @@index([customerId])
+  @@index([registration])
+  @@index([vin])
+}
+
+model RepairJob {
+  id         String @id @default(cuid())
+  repairId   String @unique // e.g. ARC-2026-00125
+  trackToken String @unique // secret used in WhatsApp/SMS/email tracking links
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  // What the customer told us
+  suspensionType SuspensionType
+  component      ComponentType
+  componentOther String?
+  position       String? // e.g. "Front Left"
+  symptoms       String[]
+  description    String
+
+  // Collection / delivery
+  deliveryOption DeliveryOption
+  pickupAddress  String?
+  pickupDate     DateTime?
+  pickupTime     String?
+
+  stage        RepairStage @default(REQUEST_SUBMITTED)
+  technicianId String?
+  technician   User?       @relation("AssignedTechnician", fields: [technicianId], references: [id])
+
+  // Job card / digital diagnosis
+  componentCondition  String? // condition on receipt
+  faultFound          String?
+  diagnosis           String?
+  partsRequired       String? // spec §11: parts needed for the repair
+  repairProcedure     String?
+  technicianNotes     String? // internal only
+  testResults         String?
+  qcResult            String? // PASS / FAIL
+  estimatedCompletion DateTime?
+
+  // Payment summary (kobo)
+  paymentStatus PaymentStatus @default(AWAITING)
+  amountPaid    Int           @default(0)
+
+  receivedAt   DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  history       StatusHistory[]
+  media         Media[]
+  quotations    Quotation[]
+  payments      Payment[]
+  warranty      Warranty?
+  notifications NotificationLog[]
+
+  @@index([stage])
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([technicianId])
+  @@index([updatedAt])
+  pushSubscriptions PushSubscription[]
+}
+
+model StatusHistory {
+  id                String       @id @default(cuid())
+  jobId             String
+  job               RepairJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage             RepairStage? // null for notes that don't change the stage
+  title             String
+  note              String?
+  visibleToCustomer Boolean      @default(true)
+  createdById       String?
+  createdBy         User?        @relation(fields: [createdById], references: [id])
+  createdAt         DateTime     @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+model Media {
+  id                String     @id @default(cuid())
+  jobId             String
+  job               RepairJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  phase             MediaPhase
+  fileName          String // stored file name on disk / object storage key
+  originalName      String
+  mimeType          String
+  size              Int
+  caption           String?
+  visibleToCustomer Boolean    @default(true)
+  uploadedById      String?
+  uploadedBy        User?      @relation(fields: [uploadedById], references: [id])
+  createdAt         DateTime   @default(now())
+
+  @@index([jobId])
+}
+
+model Quotation {
+  id                  String          @id @default(cuid())
+  number              String          @unique // e.g. Q-ARC-2026-00125-1
+  jobId               String
+  job                 RepairJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status              QuoteStatus     @default(DRAFT)
+  items               QuotationItem[]
+  subtotal            Int
+  discount            Int             @default(0)
+  total               Int
+  depositPercent      Int             @default(0) // 0 = full payment required
+  validUntil          DateTime
+  estimatedCompletion DateTime?
+  notes               String?
+  sentAt              DateTime?
+  respondedAt         DateTime?
+  respondedBy         String? // name / contact the customer verified with
+  respondedIp         String?
+  customerMessage     String? // clarification request or decline reason
+  createdAt           DateTime        @default(now())
+
+  payments Payment[]
+
+  @@index([jobId, status])
+}
+
+model QuotationItem {
+  id          String        @id @default(cuid())
+  quotationId String
+  quotation   Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  kind        QuoteItemKind
+  description String
+  quantity    Int           @default(1)
+  unitPrice   Int
+  amount      Int
+}
+
+model Payment {
+  id            String     @id @default(cuid())
+  jobId         String
+  job           RepairJob  @relation(fields: [jobId], references: [id])
+  quotationId   String?
+  quotation     Quotation? @relation(fields: [quotationId], references: [id])
+  reference     String     @unique
+  provider      String // PAYSTACK, CASH, TRANSFER, MOCK
+  amount        Int
+  status        TxStatus   @default(PENDING)
+  channel       String?
+  receiptNumber String?    @unique
+  paidAt        DateTime?
+  raw           Json?
+  createdAt     DateTime   @default(now())
+
+  @@index([jobId])
+  @@index([status, paidAt])
+}
+
+model Warranty {
+  id         String          @id @default(cuid())
+  jobId      String          @unique
+  job        RepairJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  months     Int
+  startDate  DateTime
+  expiryDate DateTime
+  terms      String
+  claims     WarrantyClaim[]
+  createdAt  DateTime        @default(now())
+}
+
+model WarrantyClaim {
+  id          String      @id @default(cuid())
+  warrantyId  String
+  warranty    Warranty    @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
+  description String
+  status      ClaimStatus @default(OPEN)
+  resolution  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Enquiry {
+  id        String      @id @default(cuid())
+  type      EnquiryType
+  name      String
+  phone     String
+  email     String?
+  vehicle   String?
+  message   String
+  handled   Boolean     @default(false)
+  createdAt DateTime    @default(now())
+}
+
+model NotificationLog {
+  id        String     @id @default(cuid())
+  jobId     String?
+  job       RepairJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  channel   String // EMAIL, SMS, WHATSAPP
+  recipient String
+  subject   String?
+  message   String
+  status    String // SENT, FAILED, SKIPPED
+  error     String?
+  createdAt DateTime   @default(now())
+
+  @@index([jobId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+// Atomic sequences, e.g. key "repair-2026" -> last number used.
+// One-time sign-in codes for customers (spec §8 / §16). Only a hash of the code is stored.
+model OtpCode {
+  id        String   @id @default(cuid())
+  contact   String // normalised phone (234…) or lower-case email
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([contact, createdAt])
+}
+
+model Counter {
+  key   String @id
+  value Int
+}
+
+// Business details editable by the admin (single row, id "default").
+model Setting {
+  id        String   @id @default("default")
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// Photos the admin uploads for the website (slideshow, home page sections). Served publicly.
+model SiteImage {
+  id           String   @id @default(cuid())
+  fileName     String
+  originalName String
+  mimeType     String
+  size         Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+}
+
+// A phone/browser that asked for live alerts about one repair (Web Push).
+model PushSubscription {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       RepairJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime  @default(now())
+
+  @@unique([endpoint, jobId])
+  @@index([jobId])
+}
